@@ -8,6 +8,50 @@ locals {
   public_count      = var.enable == true && (var.type == "public" || var.type == "public-private") ? length(var.availability_zones) : 0
   private_count     = var.enable == true && (var.type == "private" || var.type == "public-private") ? length(var.availability_zones) : 0
   nat_gateway_count = var.enable == true && var.single_nat_gateway ? 1 : (var.enable == true && (var.type == "private" || var.type == "public-private") && var.nat_gateway_enabled == true ? length(var.availability_zones) : 0)
+
+  # ── NEW: public routes ──────────────────────────────────────────────────────
+  # Combines both inputs into one flat list:
+  #   for_all routes    → expanded to every AZ
+  #   per_subnet routes → only the AZs the caller specified
+  # Key uses az_name + cidr — both caller-supplied strings,
+  # always known at plan time → no "Invalid for_each" error ever.
+  public_additional_routes_expanded = flatten([
+    for az_index, az in var.availability_zones : concat(
+      # same route for all AZs
+      [
+        for route in var.additional_public_routes_for_all : merge(route, {
+          az_index = tostring(az_index)
+          az_name  = az
+        })
+      ],
+      # per-subnet route for this specific AZ only
+      [
+        for route in lookup(var.additional_public_routes_per_subnet, az, []) : merge(route, {
+          az_index = tostring(az_index)
+          az_name  = az
+        })
+      ]
+    )
+  ])
+
+  # ── NEW: private routes ─────────────────────────────────────────────────────
+  private_additional_routes_expanded = flatten([
+    for az_index, az in var.availability_zones : concat(
+      [
+        for route in var.additional_private_routes_for_all : merge(route, {
+          az_index = tostring(az_index)
+          az_name  = az
+        })
+      ],
+      [
+        for route in lookup(var.additional_private_routes_per_subnet, az, []) : merge(route, {
+          az_index = tostring(az_index)
+          az_name  = az
+        })
+      ]
+    )
+  ])
+
 }
 ##-----------------------------------------------------------------------------
 ## Labels module called that will be used for naming and tags.
@@ -350,4 +394,66 @@ resource "aws_flow_log" "private_subnet_flow_log" {
       "Name" = format("%s-flowlog", module.private-labels.name)
     }
   )
+}
+
+##-----------------------------------------------------------------------------
+## Additional routes for public route tables.
+## Handles both for_all and per_subnet inputs in one resource block.
+##-----------------------------------------------------------------------------
+resource "aws_route" "public_additional" {
+  for_each = {
+    for r in local.public_additional_routes_expanded :
+    "${r.az_name}|${lookup(r, "destination_cidr_block", lookup(r, "destination_ipv6_cidr_block", ""))}" => r
+  }
+
+  route_table_id              = aws_route_table.public[tonumber(each.value.az_index)].id
+  destination_cidr_block      = lookup(each.value, "destination_cidr_block", null)
+  destination_ipv6_cidr_block = lookup(each.value, "destination_ipv6_cidr_block", null)
+
+  gateway_id                = lookup(each.value, "gateway_id", null)
+  nat_gateway_id            = lookup(each.value, "nat_gateway_id", null)
+  transit_gateway_id        = lookup(each.value, "transit_gateway_id", null)
+  vpc_peering_connection_id = lookup(each.value, "vpc_peering_connection_id", null)
+  network_interface_id      = lookup(each.value, "network_interface_id", null)
+  egress_only_gateway_id    = lookup(each.value, "egress_only_gateway_id", null)
+  carrier_gateway_id        = lookup(each.value, "carrier_gateway_id", null)
+  local_gateway_id          = lookup(each.value, "local_gateway_id", null)
+  core_network_arn          = lookup(each.value, "core_network_arn", null)
+
+  depends_on = [aws_route_table.public]
+
+  timeouts {
+    create = "5m"
+  }
+}
+
+##-----------------------------------------------------------------------------
+## Additional routes for private route tables.
+## Handles both for_all and per_subnet inputs in one resource block.
+##-----------------------------------------------------------------------------
+resource "aws_route" "private_additional" {
+  for_each = {
+    for r in local.private_additional_routes_expanded :
+    "${r.az_name}|${lookup(r, "destination_cidr_block", lookup(r, "destination_ipv6_cidr_block", ""))}" => r
+  }
+
+  route_table_id              = aws_route_table.private[tonumber(each.value.az_index)].id
+  destination_cidr_block      = lookup(each.value, "destination_cidr_block", null)
+  destination_ipv6_cidr_block = lookup(each.value, "destination_ipv6_cidr_block", null)
+
+  gateway_id                = lookup(each.value, "gateway_id", null)
+  nat_gateway_id            = lookup(each.value, "nat_gateway_id", null)
+  transit_gateway_id        = lookup(each.value, "transit_gateway_id", null)
+  vpc_peering_connection_id = lookup(each.value, "vpc_peering_connection_id", null)
+  network_interface_id      = lookup(each.value, "network_interface_id", null)
+  egress_only_gateway_id    = lookup(each.value, "egress_only_gateway_id", null)
+  carrier_gateway_id        = lookup(each.value, "carrier_gateway_id", null)
+  local_gateway_id          = lookup(each.value, "local_gateway_id", null)
+  core_network_arn          = lookup(each.value, "core_network_arn", null)
+
+  depends_on = [aws_route_table.private]
+
+  timeouts {
+    create = "5m"
+  }
 }
