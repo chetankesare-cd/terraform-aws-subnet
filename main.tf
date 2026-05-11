@@ -9,22 +9,14 @@ locals {
   private_count     = var.enable == true && (var.type == "private" || var.type == "public-private") ? length(var.availability_zones) : 0
   nat_gateway_count = var.enable == true && var.single_nat_gateway ? 1 : (var.enable == true && (var.type == "private" || var.type == "public-private") && var.nat_gateway_enabled == true ? length(var.availability_zones) : 0)
 
-  # ── NEW: public routes ──────────────────────────────────────────────────────
-  # Combines both inputs into one flat list:
-  #   for_all routes    → expanded to every AZ
-  #   per_subnet routes → only the AZs the caller specified
-  # Key uses az_name + cidr — both caller-supplied strings,
-  # always known at plan time → no "Invalid for_each" error ever.
-  public_additional_routes_expanded = flatten([
+  public_additional_routes_expanded = var.enable ? flatten([
     for az_index, az in var.availability_zones : concat(
-      # same route for all AZs
       [
         for route in var.additional_public_routes_for_all : merge(route, {
           az_index = tostring(az_index)
           az_name  = az
         })
       ],
-      # per-subnet route for this specific AZ only
       [
         for route in lookup(var.additional_public_routes_per_subnet, az, []) : merge(route, {
           az_index = tostring(az_index)
@@ -32,10 +24,9 @@ locals {
         })
       ]
     )
-  ])
+  ]) : []
 
-  # ── NEW: private routes ─────────────────────────────────────────────────────
-  private_additional_routes_expanded = flatten([
+  private_additional_routes_expanded = var.enable ? flatten([
     for az_index, az in var.availability_zones : concat(
       [
         for route in var.additional_private_routes_for_all : merge(route, {
@@ -50,8 +41,7 @@ locals {
         })
       ]
     )
-  ])
-
+  ]) : []
 }
 ##-----------------------------------------------------------------------------
 ## Labels module called that will be used for naming and tags.
@@ -397,8 +387,9 @@ resource "aws_flow_log" "private_subnet_flow_log" {
 }
 
 ##-----------------------------------------------------------------------------
-## Additional routes for public route tables.
-## Handles both for_all and per_subnet inputs in one resource block.
+## Below resources will deploy additional routes for public route tables.
+## Controlled by var.enable — when false, no routes are created.
+## Routes are only created when caller explicitly passes values.
 ##-----------------------------------------------------------------------------
 resource "aws_route" "public_additional" {
   for_each = {
@@ -428,8 +419,9 @@ resource "aws_route" "public_additional" {
 }
 
 ##-----------------------------------------------------------------------------
-## Additional routes for private route tables.
-## Handles both for_all and per_subnet inputs in one resource block.
+## Below resources will deploy additional routes for private route tables.
+## Controlled by var.enable — when false, no routes are created.
+## Routes are only created when caller explicitly passes values.
 ##-----------------------------------------------------------------------------
 resource "aws_route" "private_additional" {
   for_each = {
