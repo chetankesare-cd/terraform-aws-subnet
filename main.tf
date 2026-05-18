@@ -392,11 +392,10 @@ resource "aws_flow_log" "private_subnet_flow_log" {
 ## Routes are only created when caller explicitly passes values.
 ##-----------------------------------------------------------------------------
 resource "aws_route" "public_additional" {
-  for_each = {
+  for_each = var.enable ? {
     for r in local.public_additional_routes_expanded :
     "${r.az_name}|${lookup(r, "destination_cidr_block", lookup(r, "destination_ipv6_cidr_block", ""))}" => r
-  }
-
+  } : {}
   route_table_id              = aws_route_table.public[tonumber(each.value.az_index)].id
   destination_cidr_block      = lookup(each.value, "destination_cidr_block", null)
   destination_ipv6_cidr_block = lookup(each.value, "destination_ipv6_cidr_block", null)
@@ -424,10 +423,10 @@ resource "aws_route" "public_additional" {
 ## Routes are only created when caller explicitly passes values.
 ##-----------------------------------------------------------------------------
 resource "aws_route" "private_additional" {
-  for_each = {
+  for_each = var.enable ? {
     for r in local.private_additional_routes_expanded :
     "${r.az_name}|${lookup(r, "destination_cidr_block", lookup(r, "destination_ipv6_cidr_block", ""))}" => r
-  }
+  } : {}
 
   route_table_id              = aws_route_table.private[tonumber(each.value.az_index)].id
   destination_cidr_block      = lookup(each.value, "destination_cidr_block", null)
