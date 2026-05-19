@@ -163,7 +163,7 @@ module "subnets" {
   ]
 
   # Mode 2: Different route per specific private subnet.
-  # Only eu-west-1a gets this extra entry.
+  # Only eu-west-1a will get this extra entry.
   # eu-west-1b and eu-west-1c only get the for_all route above.
   additional_private_routes_per_subnet = {
     "${local.region}a" = [
