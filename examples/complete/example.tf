@@ -63,7 +63,7 @@ module "subnets" {
   ##---------------------------------------------------------------------------
   nat_gateway_enabled                            = true
   single_nat_gateway                             = true
-  availability_zones                             = ["eu-west-1a", "eu-west-1b", "eu-west-1c"]
+  availability_zones                             = ["${local.region}a", "${local.region}b", "${local.region}c"]
   vpc_id                                         = module.vpc.vpc_id
   type                                           = "public-private"
   igw_id                                         = module.vpc.igw_id
@@ -136,16 +136,17 @@ module "subnets" {
   ]
 
   # Mode 2: Different route per specific public subnet.
-  # AZ name must be a hardcoded string — not an interpolation.
-  # eu-west-1c is not listed so it only gets the for_all route above.
+  # AZ key must match exactly what is passed in availability_zones.
+  # Using local.region ensures one place to change the region.
+
   additional_public_routes_per_subnet = {
-    "eu-west-1a" = [
+    "${local.region}a" = [
       {
         destination_cidr_block = "192.168.1.0/24"
         gateway_id             = aws_vpn_gateway.this.id
       }
     ]
-    "eu-west-1b" = [
+    "${local.region}b" = [
       {
         destination_cidr_block = "192.168.2.0/24"
         gateway_id             = aws_vpn_gateway.this.id
@@ -165,7 +166,7 @@ module "subnets" {
   # Only eu-west-1a gets this extra entry.
   # eu-west-1b and eu-west-1c only get the for_all route above.
   additional_private_routes_per_subnet = {
-    "eu-west-1a" = [
+    "${local.region}a" = [
       {
         destination_cidr_block = "192.168.10.0/24"
         gateway_id             = aws_vpn_gateway.this.id
